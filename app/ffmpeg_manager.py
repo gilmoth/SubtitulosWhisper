@@ -12,6 +12,7 @@ from typing import Callable, Optional
 import logging
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -24,6 +25,16 @@ from .paths import get_ffmpeg_dir
 ProgressCallback = Callable[[int, int], None]
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _win_startupinfo() -> "subprocess.STARTUPINFO | None":
+    """Devuelve un STARTUPINFO que oculta la ventana de consola en Windows."""
+    if sys.platform != "win32":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = subprocess.SW_HIDE
+    return si
 
 FFMPEG_DOWNLOAD_URL = (
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
@@ -85,6 +96,7 @@ class FFmpegManager:
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=15,
+                startupinfo=_win_startupinfo(),
             )
             if proc.returncode == 0 and proc.stdout.strip():
                 return float(proc.stdout.strip())
@@ -120,6 +132,7 @@ class FFmpegManager:
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=10,
+                startupinfo=_win_startupinfo(),
             )
             return proc.returncode == 0
         except Exception as exc:

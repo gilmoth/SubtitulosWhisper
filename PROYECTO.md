@@ -78,12 +78,13 @@ Aplicación de escritorio Windows para transcribir audio/vídeo de forma local u
 - **Estimaciones de tiempo orientativas**: los RTF en `MODEL_METADATA` son medias típicas; varían según hardware específico.
 - **Batch skip parcial**: si se cambia la selección de formatos entre ejecuciones puede no detectar archivos parcialmente procesados.
 - **Progreso con VAD**: el progreso puede parecer irregular en archivos con mucho silencio.
+- **Icono en exe PyInstaller**: en algunos sistemas el icono de la ventana puede no cargarse correctamente si `sys._MEIPASS` no resuelve la ruta esperada; el icono de la barra de tareas (EXE) sí se incrusta correctamente vía el spec.
 
 ---
 
 ## Próximos Pasos
 
-1. **Empaquetado con PyInstaller** — generar ejecutable `.exe` distribuible con ffmpeg y modelos opcionales embebidos
+1. ~~**Empaquetado con PyInstaller**~~ — ✓ Completado (onedir, ~845 MB, `dist/SubtitulosWhisper/`)
 
 ---
 
@@ -115,3 +116,7 @@ Aplicación de escritorio Windows para transcribir audio/vídeo de forma local u
 | 2026-03-14 | Icono de aplicación integrado; AppUserModelID registrado para barra de tareas de Windows. |
 | 2026-03-14 | Pestaña "Audio" en diálogo de configuración: VAD, modo de idioma (auto/fijo/multi + combo 12 idiomas), formato de subtítulos (chars/línea y líneas/segmento). Valores pasados a `TranscriptionJob`. |
 | 2026-03-15 | `_wrap_text()` implementado en `exporter.py`; `export_srt()` y `export_vtt()` aplican `max_line_chars` y `max_lines_per_segment` al generar subtítulos. |
+| 2026-03-15 | Rediseño visual de la ventana principal: toolbar en 3 filas (TAREA / ENTRADA / SALIDA), colores de acento teal `#08aaac` / `#057779`, badges de estado coloreados, barras de progreso de 4 px, log con colores por nivel. |
+| 2026-03-15 | Tabla de batch ampliada a 3 columnas (Archivo / Duración / Estado). Columna Archivo en Stretch, Duración y Estado en Interactive con anchos iniciales 100/120 px. |
+| 2026-03-15 | Botón limpiar (🗑) en la status bar: resetea batch, tabla, barras de progreso y campo de entrada en modo carpeta. |
+| 2026-03-15 | Empaquetado con PyInstaller (`SubtitulosWhisper.spec`): onedir, ~845 MB, icono incrustado, torch excluido para reducir tamaño. Carga de icono compatible con `sys._MEIPASS` en desarrollo y exe. |

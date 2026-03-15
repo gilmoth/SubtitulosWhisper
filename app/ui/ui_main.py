@@ -129,6 +129,16 @@ class _UILogHandler(logging.Handler):
         except Exception:
             pass
 
+def _get_icon_path() -> str:
+    """Devuelve la ruta al icono tanto en desarrollo como en exe de PyInstaller."""
+    import sys
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        base = Path(__file__).parent.parent.parent
+    return str(base / "app" / "ui" / "resources" / "icon.ico")
+
+
 from ..batch import Batch, BatchItemStatus
 from ..config import Config
 from ..exporter import Exporter
@@ -150,15 +160,15 @@ class MainWindow(QMainWindow):
         """Inicializa la ventana principal y configura la interfaz."""
         super().__init__(parent)
 
-        icon_path = Path(__file__).parent / "resources" / "icon.ico"
-        if icon_path.is_file():
-            self.setWindowIcon(QIcon(str(icon_path)))
+        self.setWindowIcon(QIcon(_get_icon_path()))
 
         self._config = Config()
         self._batch = Batch()
         self._worker: Optional[TranscriptionWorker] = None
         self._path_to_row: Dict[Path, int] = {}
         self._file_durations: Dict[Path, float] = {}  # caché de duraciones en segundos
+        self._file_start_times: Dict[Path, float] = {}  # tiempo de inicio por archivo
+        self._batch_start_time: float = 0.0
 
         self._setup_ui()
         self._restore_window_state()
@@ -336,8 +346,8 @@ class MainWindow(QMainWindow):
         # Tabla de archivos (3 columnas: Archivo | Duración | Estado)
         # ----------------------------------------------------------------
         self._table = QTableWidget(self)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(["ARCHIVO", "DURACIÓN", "ESTADO"])
+        self._table.setColumnCount(4)
+        self._table.setHorizontalHeaderLabels(["ARCHIVO", "DURACIÓN", "PROCESADO", "ESTADO"])
         header = self._table.horizontalHeader()
         header.setStyleSheet(
             "QHeaderView::section {"
@@ -346,10 +356,14 @@ class MainWindow(QMainWindow):
             "  padding: 4px 6px;"
             "}"
         )
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.resizeSection(1, 90)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(1, 100)
+        self._table.setColumnWidth(2, 100)
+        self._table.setColumnWidth(3, 120)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -913,7 +927,7 @@ class MainWindow(QMainWindow):
         cl = QHBoxLayout(container)
         cl.setContentsMargins(4, 2, 4, 2)
         cl.addWidget(badge)
-        self._table.setCellWidget(row, 2, container)
+        self._table.setCellWidget(row, 3, container)
 
     def _refresh_batch_table(self) -> None:
         """Refresca la tabla de archivos según el estado del batch."""
@@ -933,6 +947,11 @@ class MainWindow(QMainWindow):
             dur_item.setTextAlignment(Qt.AlignCenter)
             dur_item.setFlags(dur_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._table.setItem(row, 1, dur_item)
+
+            proc_item = QTableWidgetItem("—")
+            proc_item.setTextAlignment(Qt.AlignCenter)
+            proc_item.setFlags(proc_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._table.setItem(row, 2, proc_item)
 
             self._set_status_badge(row, item.status)
 
@@ -1222,6 +1241,8 @@ class MainWindow(QMainWindow):
         self._progress_bar.setValue(0)
         self._file_progress_bar.setValue(0)
         self._refresh_summary_label()
+        import time
+        self._batch_start_time = time.time()
         self._worker.start()
 
     # ------------------------------------------------------------------
@@ -1235,14 +1256,29 @@ class MainWindow(QMainWindow):
 
     @Slot(Path)
     def _on_worker_file_started(self, path: Path) -> None:
-        """Marca un archivo como en progreso en la tabla y actualiza la status bar."""
+        """Marca un archivo como en progreso en la tabla y registra tiempo de inicio."""
+        import time
+        self._file_start_times[path] = time.time()
         self._update_status_for_path(path)
         self._status_right_label.setText(path.name)
 
     @Slot(Path)
     def _on_worker_file_finished(self, path: Path) -> None:
-        """Marca un archivo como completado en la tabla."""
+        """Marca un archivo como completado y escribe el tiempo de procesado en col 2."""
+        import time
         self._update_status_for_path(path)
+        elapsed = time.time() - self._file_start_times.get(path, time.time())
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        elapsed_text = f"{mins}m {secs:02d}s" if mins > 0 else f"{secs}s"
+        row = self._path_to_row.get(path.resolve())
+        if row is not None and 0 <= row < self._table.rowCount():
+            cell = self._table.item(row, 2)
+            if cell is None:
+                cell = QTableWidgetItem()
+                self._table.setItem(row, 2, cell)
+            cell.setText(elapsed_text)
+            cell.setTextAlignment(Qt.AlignCenter)
 
     @Slot(str)
     def _on_worker_error_occurred(self, message: str) -> None:
@@ -1255,8 +1291,13 @@ class MainWindow(QMainWindow):
         """Restaura el estado de la UI tras finalizar el procesamiento."""
         device = self._current_device()
         LOGGER.info("Transcripción finalizada. Dispositivo usado: %s", device.upper())
+        import time
+        total_elapsed = time.time() - self._batch_start_time
+        total_mins = int(total_elapsed // 60)
+        total_secs = int(total_elapsed % 60)
+        total_text = f"{total_mins}m {total_secs:02d}s" if total_mins > 0 else f"{total_secs}s"
         self._refresh_summary_label()
-        self._status_right_label.setText("")
+        self._status_right_label.setText(f"Total: {total_text}")
         self._file_progress_bar.setValue(0)
         self._refresh_batch_table()
 

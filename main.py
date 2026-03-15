@@ -33,6 +33,15 @@ def _setup_logging(logs_dir: Path) -> None:
     )
 
 
+def _get_icon_path() -> str:
+    """Devuelve la ruta al icono tanto en desarrollo como en exe de PyInstaller."""
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        base = Path(__file__).parent
+    return str(base / "app" / "ui" / "resources" / "icon.ico")
+
+
 def main() -> None:
     """Inicializa QApplication y la ventana principal de la aplicación.
 
@@ -48,9 +57,7 @@ def main() -> None:
     except Exception:
         pass
 
-    icon_path = Path(__file__).parent / "app" / "ui" / "resources" / "icon.ico"
-    if icon_path.is_file():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    app.setWindowIcon(QIcon(_get_icon_path()))
 
     # Cargar configuración (incluye creación de config.json con valores por defecto).
     config = Config()

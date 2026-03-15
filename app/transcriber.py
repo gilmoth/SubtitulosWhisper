@@ -11,12 +11,23 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 import logging
 import subprocess
+import sys
 import tempfile
 
 from .model_manager import ModelManager
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _win_startupinfo() -> "subprocess.STARTUPINFO | None":
+    """Devuelve un STARTUPINFO que oculta la ventana de consola en Windows."""
+    if sys.platform != "win32":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = subprocess.SW_HIDE
+    return si
 
 
 @dataclass
@@ -187,6 +198,7 @@ class Transcriber:
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=600,
+                startupinfo=_win_startupinfo(),
             )
 
             if proc.returncode != 0:
